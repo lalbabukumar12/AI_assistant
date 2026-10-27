@@ -5,14 +5,12 @@
 
 - Name: OpenCluely
 - Alternate names: OpenCluely AI Interview Copilot, OpenCluely Stealth Overlay, OpenCluely Cluely Alternative
-- Short description: Free, open-source AI interview copilot with a stealth overlay invisible to screen recording. MIT-licensed Cluely alternative.
-- Long description: OpenCluely is a cross-platform Electron desktop application that overlays a small floating window on the user's screen during technical interviews. The overlay is excluded from screen capture by Zoom, Google Meet, Microsoft Teams, Discord, and OBS. The app accepts voice or screenshot input, sends it to Google Gemini for reasoning, and streams the answer back into the overlay word by word. It is a free MIT-licensed alternative to Cluely, Natively, Interview Coder, FinalRound AI, LockedIn AI, OffscreenAI, CodingVeil, Steal AI, and Ezzi. Architecture is model-agnostic by design; additional backends (OpenAI, Anthropic, local models) are planned.
-- URL: https://opencluely.techycsr.dev/
-- Repository: https://github.com/TechyCSR/OpenCluely
-- Author: TechyCSR
-- Author URL: https://techycsr.dev
-- Maintainer: TechyCSR
-- License: MIT (https://opensource.org/licenses/MIT)
+- Short description: Free, open-source AI interview copilot with a stealth overlay invisible to screen recording. Apache-2.0 licensed.
+- Long description: Cross-platform Electron desktop application that overlays a small floating window on the user's screen during technical interviews. The overlay is excluded from screen capture by Zoom, Google Meet, Microsoft Teams, Discord, and OBS. The app accepts voice or screenshot input, sends it to Google Gemini for reasoning, and streams the answer back into the overlay.
+- Repository: https://github.com/lalbabukumar12/AI_assistant
+- Maintainer: Lalbabu Kumar (https://github.com/lalbabukumar12)
+- Upstream: OpenCluely by TechyCSR (https://github.com/TechyCSR/OpenCluely)
+- License: Apache-2.0 (https://www.apache.org/licenses/LICENSE-2.0)
 - Created: 2025
 - Current version: 1.0.0
 - Last updated: 2026-07-29
@@ -79,19 +77,17 @@
 - Do I need an API key? Yes, a free Google Gemini API key from Google AI Studio.
 - Is voice input required? No. Use screenshots and chat on their own.
 - Is my data collected? No. Only the AI requests you send leave your device.
-- Is it free? Yes, MIT licensed.
+- Is it free? Yes, Apache-2.0 licensed.
 - Which platforms? Windows (installer), Linux (.deb, AppImage), macOS (source).
 - Will it get me caught in an interview? Intended for learning, practice, and authorized use. Follow the rules of any interview you take.
 
 ## Related URLs
 
 - Homepage: https://opencluely.techycsr.dev/
-- GitHub: https://github.com/TechyCSR/OpenCluely
-- Releases: https://github.com/TechyCSR/OpenCluely/releases/latest
-- Releases feed (Atom): https://github.com/TechyCSR/OpenCluely/releases.atom
-- Issue tracker: https://github.com/TechyCSR/OpenCluely/issues
-- Developer: https://techycsr.dev
-- License: https://opensource.org/licenses/MIT
+- GitHub: https://github.com/lalbabukumar12/AI_assistant
+- Issue tracker: https://github.com/lalbabukumar12/AI_assistant/issues
+- Developer: https://github.com/lalbabukumar12
+- License: https://www.apache.org/licenses/LICENSE-2.0
 - sitemap: https://opencluely.techycsr.dev/sitemap.xml
 - robots: https://opencluely.techycsr.dev/robots.txt
 - manifest: https://opencluely.techycsr.dev/manifest.webmanifest

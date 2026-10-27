@@ -24,10 +24,10 @@ a strict BYOK model so the user keeps control of their API key and their data.
 
 - **Product name:** OpenCluely (also "OpenCluely AI Interview Copilot")
 - **Tagline:** The invisible AI interview copilot - and the free open-source Cluely alternative
-- **Repository:** https://github.com/TechyCSR/OpenCluely
-- **License:** MIT - https://opensource.org/licenses/MIT
-- **Website:** https://opencluely.techycsr.dev/
-- **Author:** TechyCSR (https://techycsr.dev, https://github.com/TechyCSR)
+- **Repository:** https://github.com/lalbabukumar12/AI_assistant
+- **License:** Apache-2.0 - https://www.apache.org/licenses/LICENSE-2.0
+- **Maintainer:** Lalbabu Kumar (https://github.com/lalbabukumar12)
+- **Based on:** OpenCluely by TechyCSR (https://github.com/TechyCSR/OpenCluely)
 - **Platforms:** Windows (NSIS .exe installer), Linux (.deb, .AppImage), macOS (run from source via ./setup.sh)
 - **Tech stack:** Electron, Google Gemini API (Flash-Lite and Flash), OpenAI Whisper (local) and Azure Speech, PrismJS, WDA_EXCLUDEFROMCAPTURE / SetWindowDisplayAffinity (Windows), NSWindowSharingNone (macOS)
 - **Pricing:** Free, open source, MIT licensed. Only the user's own Gemini API usage costs (which has a generous free tier). No subscription, no account, no proxy.
@@ -56,7 +56,7 @@ a strict BYOK model so the user keeps control of their API key and their data.
 ## Quick start
 
 ```sh
-git clone https://github.com/TechyCSR/OpenCluely.git
+git clone https://github.com/lalbabukumar12/AI_assistant.git
 cd OpenCluely
 ./setup.sh
 ```
@@ -87,16 +87,15 @@ or add Azure Speech credentials in Settings.
 - **Do I need an API key?** Yes, a free Google Gemini API key from Google AI Studio.
 - **Is voice input required?** No. Optional. Use screenshots and chat instead.
 - **Is my data collected?** No telemetry. Everything stays local except the AI requests you send.
-- **Is it free?** Yes, MIT licensed.
+- **Is it free?** Yes, Apache-2.0 licensed.
 - **Which platforms?** Windows (installer), Linux (.deb, AppImage), macOS (source).
 - **Will it get me caught in an interview?** Intended for learning, practice, and authorized use. Always follow the rules of any interview you take.
 
 ## Related links
 
-- GitHub releases: https://github.com/TechyCSR/OpenCluely/releases/latest
-- Releases feed (Atom): https://github.com/TechyCSR/OpenCluely/releases.atom
-- Issue tracker: https://github.com/TechyCSR/OpenCluely/issues
-- Developer site: https://techycsr.dev
+- GitHub repository: https://github.com/lalbabukumar12/AI_assistant
+- Issue tracker: https://github.com/lalbabukumar12/AI_assistant/issues
+- Developer profile: https://github.com/lalbabukumar12
 - llms-full.txt: https://opencluely.techycsr.dev/llms-full.txt
 - sitemap: https://opencluely.techycsr.dev/sitemap.xml
 - robots: https://opencluely.techycsr.dev/robots.txt

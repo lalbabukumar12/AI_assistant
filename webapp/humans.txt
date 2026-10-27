@@ -6,9 +6,9 @@
 
 # TEAM
 
-  Developer & maintainer: TechyCSR
-  Site: https://techycsr.dev
-  GitHub: https://github.com/TechyCSR
+  Maintainer: Lalbabu Kumar
+  GitHub: https://github.com/lalbabukumar12
+  Upstream: OpenCluely by TechyCSR (https://github.com/TechyCSR/OpenCluely)
 
 # SITE
 

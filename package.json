@@ -1,11 +1,11 @@
 {
-  "name": "opencluely",
+  "name": "ai-assistant",
   "version": "1.0.0",
   "description": "AI Problem Solving Assistant",
   "main": "main.js",
   "scripts": {
-    "start": "env -u ELECTRON_RUN_AS_NODE electron .",
-    "dev": "env -u ELECTRON_RUN_AS_NODE electron . --no-sandbox --disable-gpu",
+    "start": "node scripts/run-electron.js .",
+    "dev": "node scripts/run-electron.js . --no-sandbox --disable-gpu",
     "test-speech": "node scripts/test-speech.js",
     "build": "electron-builder",
     "build:mac": "electron-builder --mac",
@@ -20,15 +20,19 @@
     "postinstall": "electron-builder install-app-deps"
   },
   "author": {
-    "name": "TechyCSR",
-    "email": "info@techycsr.dev",
-    "url": "https://techycsr.dev"
+    "name": "Lalbabu Kumar",
+    "email": "lalu19907@gmail.com",
+    "url": "https://github.com/lalbabukumar12"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/TechyCSR/OpenCluely"
+    "url": "https://github.com/lalbabukumar12/AI_assistant"
   },
-  "license": "ISC",
+  "homepage": "https://github.com/lalbabukumar12/AI_assistant#readme",
+  "bugs": {
+    "url": "https://github.com/lalbabukumar12/AI_assistant/issues"
+  },
+  "license": "Apache-2.0",
   "dependencies": {
     "@fortawesome/fontawesome-free": "^7.2.0",
     "@google/genai": "^2.9.0",
@@ -46,8 +50,8 @@
     "electron-builder": "^24.13.3"
   },
   "build": {
-    "appId": "com.opencluely.app",
-    "productName": "OpenCluely",
+    "appId": "com.lalbabukumar12.aiassistant",
+    "productName": "AI Assistant",
     "directories": {
       "output": "dist"
     },
@@ -91,9 +95,9 @@
       "hardenedRuntime": false,
       "gatekeeperAssess": false,
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "OpenCluely uses the microphone to transcribe your speech locally with Whisper.",
-        "NSCameraUsageDescription": "OpenCluely does not record video; this entitlement is only present for media-capture compatibility.",
-        "NSScreenCaptureUsageDescription": "OpenCluely captures the screen to read on-screen content for AI assistance."
+        "NSMicrophoneUsageDescription": "AI Assistant uses the microphone to transcribe your speech locally with Whisper.",
+        "NSCameraUsageDescription": "AI Assistant does not record video; this entitlement is only present for media-capture compatibility.",
+        "NSScreenCaptureUsageDescription": "AI Assistant captures the screen to read on-screen content for AI assistance."
       }
     },
     "win": {
@@ -162,10 +166,10 @@
       "perMachine": false,
       "include": "scripts/post-install-nsis.nsh",
       "deleteAppDataOnUninstall": false,
-      "artifactName": "OpenCluely-Setup-${version}.${ext}"
+      "artifactName": "AI-Assistant-Setup-${version}.${ext}"
     },
     "dmg": {
-      "title": "OpenCluely Interview Assistant",
+      "title": "AI Assistant",
       "backgroundColor": "#000000",
       "window": {
         "width": 600,
