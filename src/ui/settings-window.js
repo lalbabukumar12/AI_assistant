@@ -21,6 +21,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const codingLanguageSelect = document.getElementById('codingLanguage');
     const activeSkillSelect = document.getElementById('activeSkill');
     const iconGrid = document.getElementById('iconGrid');
+    const audioSourceSelect = document.getElementById('audioSource');
+    const audioDeviceIdSelect = document.getElementById('audioDeviceId') || document.getElementById('systemAudioDevice');
 
     // Check if window.api exists
     if (!window.api) {
@@ -73,6 +75,48 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Function to load settings into UI
+    const populateAudioDevices = async (selectedId) => {
+        const targetSelect = audioDeviceIdSelect;
+        if (!targetSelect || !window.electronAPI || !window.electronAPI.getAudioDevices) return;
+        try {
+            const result = await window.electronAPI.getAudioDevices();
+            const devices = (result && result.devices) || [];
+            const current = selectedId || (targetSelect && targetSelect.value) || 'default';
+            targetSelect.innerHTML = '<option value="default">Default / System Loopback</option>';
+            devices.forEach(dev => {
+                const opt = document.createElement('option');
+                opt.value = dev.deviceId;
+                opt.textContent = dev.label || `Audio Device (${dev.deviceId.slice(0, 8)}...)`;
+                targetSelect.appendChild(opt);
+            });
+            if (current && Array.from(targetSelect.options).some(o => o.value === current)) {
+                targetSelect.value = current;
+            }
+        } catch (e) {
+            console.warn('Failed to populate audio devices in settings:', e);
+        }
+    };
+    const _ignoredPopulate = () => {
+        if (!systemAudioDeviceSelect || !window.electronAPI || !window.electronAPI.getAudioDevices) return;
+        try {
+            const result = await window.electronAPI.getAudioDevices();
+            const devices = (result && result.devices) || [];
+            const current = selectedId || (systemAudioDeviceSelect && systemAudioDeviceSelect.value) || 'default';
+            systemAudioDeviceSelect.innerHTML = '<option value="default">Default / System Loopback</option>';
+            devices.forEach(dev => {
+                const opt = document.createElement('option');
+                opt.value = dev.deviceId;
+                opt.textContent = dev.label || `Audio Input (${dev.deviceId.slice(0, 8)}...)`;
+                systemAudioDeviceSelect.appendChild(opt);
+            });
+            if (current && Array.from(systemAudioDeviceSelect.options).some(o => o.value === current)) {
+                systemAudioDeviceSelect.value = current;
+            }
+        } catch (e) {
+            console.warn('Failed to populate audio devices in settings:', e);
+        }
+    };
+
     const loadSettingsIntoUI = (settings) => {
         if (settings.speechProvider && speechProviderSelect) speechProviderSelect.value = settings.speechProvider;
         // Always set the input value, even if empty, so the user sees what's
@@ -96,6 +140,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (settings.activeSkill && activeSkillSelect) activeSkillSelect.value = settings.activeSkill;
+        if (settings.audioSource && audioSourceSelect) {
+            audioSourceSelect.value = settings.audioSource;
+        }
+        const activeDev = settings.audioDeviceId || settings.systemAudioDevice || 'default';
+        if (audioDeviceIdSelect) {
+            audioDeviceIdSelect.value = activeDev;
+        }
+        populateAudioDevices(activeDev);
+        if (false)
+        populateAudioDevices(settings.systemAudioDevice);
 
         // Handle icon selection
         const selectedIcon = settings.selectedIcon || settings.appIcon;
@@ -150,6 +204,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (windowGapInput) settings.windowGap = windowGapInput.value;
         if (codingLanguageSelect) settings.codingLanguage = codingLanguageSelect.value;
         if (activeSkillSelect) settings.activeSkill = activeSkillSelect.value;
+        if (audioSourceSelect) settings.audioSource = audioSourceSelect.value;
+        if (audioDeviceIdSelect) {
+            settings.audioDeviceId = audioDeviceIdSelect.value;
+            settings.systemAudioDevice = audioDeviceIdSelect.value;
+        }
         
         window.api.send('save-settings', settings);
     };
@@ -205,6 +264,18 @@ document.addEventListener('DOMContentLoaded', () => {
             input.addEventListener('blur', saveSettings);
         }
     });
+
+    if (audioSourceSelect) {
+        audioSourceSelect.addEventListener('change', () => {
+            saveSettings();
+        });
+    }
+
+    if (audioDeviceIdSelect) {
+        audioDeviceIdSelect.addEventListener('change', () => {
+            saveSettings();
+        });
+    }
 
     if (speechProviderSelect) {
         speechProviderSelect.addEventListener('change', () => {

@@ -533,6 +533,26 @@
                     showLoadingState();
                 });
                 
+                if (window.electronAPI.onTranscriptionLlmResponseStart) {
+                    window.electronAPI.onTranscriptionLlmResponseStart(() => {
+                        console.log('[LLM-RESPONSE] transcription-llm-response-start received');
+                        showLoadingState();
+                    });
+                }
+
+                if (window.electronAPI.onTranscriptionLlmResponse) {
+                    window.electronAPI.onTranscriptionLlmResponse((event, data) => {
+                        console.log('[LLM-RESPONSE] transcription-llm-response received');
+                        const response = data?.response || data?.content;
+                        if (response) {
+                            hideLoadingState();
+                            displayResponse(data);
+                            setupScrolling();
+                            setTimeout(verifyDisplayState, 500);
+                        }
+                    });
+                }
+
                 // Listen for LLM response
                 window.electronAPI.onDisplayLlmResponse(function() {
                     console.log('[LLM-RESPONSE] ===== display-llm-response received! =====');

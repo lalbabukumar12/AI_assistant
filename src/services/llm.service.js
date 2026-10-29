@@ -719,9 +719,12 @@ class LLMService {
 
     this.applyGenerationDefaults(request);
 
-  // For chat/transcription messages, DO NOT include the full skill prompt; use only the intelligent filter prompt
+  // For chat/transcription messages, include intelligent filter prompt and skill context prompt
   const intelligentPrompt = this.getIntelligentTranscriptionPrompt(activeSkill, programmingLanguage);
-  request.systemInstruction = { parts: [{ text: intelligentPrompt }] };
+  const fullSystemPrompt = skillContext && skillContext.skillPrompt
+    ? `${intelligentPrompt}\n\n${skillContext.skillPrompt}`
+    : intelligentPrompt;
+  request.systemInstruction = { parts: [{ text: fullSystemPrompt }] };
 
     // Add recent conversation history (excluding system messages) with validation
     const conversationContents = conversationHistory
@@ -827,7 +830,16 @@ Always respond to the point, do not repeat the question or unnecessary informati
 - Be encouraging and helpful
 - Stay focused on ${activeSkill}
 
-If the user's input is a coding or DSA problem statement and contains no code, produce a complete, runnable solution in the selected programming language without asking for more details. Always include the final implementation in a properly tagged code block.
+## Spoken Input & Speech-Recognition Recovery:
+- When the input is a transcribed spoken question, the text may contain speech-recognition errors, phonetic misspellings, or missing words. Infer the most likely intended question from the context.
+
+## Response Order & Formatting:
+- For coding questions, respond strictly in this order:
+  1. One-line problem statement
+  2. Approach
+  3. Full solution in the selected language (clean, runnable implementation in triple backticks with language tag, without comments)
+  4. Time and space complexity
+- For behavioral or conceptual questions, give a short, structured, spoken-style answer instead.
 
 Remember: Be intelligent about filtering - only provide detailed responses when the user actually needs help with ${activeSkill}.`;
 

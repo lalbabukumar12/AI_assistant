@@ -11,6 +11,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopSpeechRecognition: () => ipcRenderer.invoke('stop-speech-recognition'),
   sendAudioChunk: (buffer) => ipcRenderer.send('audio-chunk', { buffer }),
   getSpeechAvailability: () => ipcRenderer.invoke('get-speech-availability'),
+  startSystemAudio: (options) => ipcRenderer.invoke('start-system-audio', options),
+  stopSystemAudio: () => ipcRenderer.invoke('stop-system-audio'),
+  getAudioDevices: () => ipcRenderer.invoke('get-audio-devices'),
+  onSystemAudioStarted: (callback) => ipcRenderer.on('system-audio-started', callback),
+  onSystemAudioStopped: (callback) => ipcRenderer.on('system-audio-stopped', callback),
+  getInterviewerBuffer: () => ipcRenderer.invoke('get-interviewer-buffer'),
+  clearInterviewerBuffer: () => ipcRenderer.invoke('clear-interviewer-buffer'),
+  onInterviewerTranscription: (callback) => ipcRenderer.on('interviewer-transcription', callback),
+  triggerAnswer: () => ipcRenderer.invoke('trigger-answer'),
+  toggleListening: () => ipcRenderer.invoke('toggle-listening'),
   
   // Window management
   showAllWindows: () => ipcRenderer.invoke('show-all-windows'),

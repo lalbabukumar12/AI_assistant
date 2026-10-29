@@ -63,8 +63,8 @@ class PromptLoader {
     }
 
     // Inject programming language if provided and skill requires it
-    if (programmingLanguage && this.skillsRequiringProgrammingLanguage.includes(normalizedSkillName)) {
-      promptContent = this.injectProgrammingLanguage(promptContent, programmingLanguage, normalizedSkillName);
+    if (this.skillsRequiringProgrammingLanguage.includes(normalizedSkillName)) {
+      promptContent = this.injectProgrammingLanguage(promptContent, programmingLanguage || 'cpp', normalizedSkillName);
     }
 
     return promptContent;
@@ -94,9 +94,18 @@ STRICT REQUIREMENTS:
 - Respond ONLY in ${languageTitle}. Do not include any snippets or alternatives in other languages.
 - All code blocks must use triple backticks with the exact language tag: \`\`\`${fenceTag}\`\`\`.
 - Aim for the best possible time and space complexity; prefer optimal algorithms and data structures.
-- Provide: brief approach, then final ${languageTitle} implementation, followed by time/space complexity.
-- If the user's input is a problem statement (and does not include code), produce a complete, runnable ${languageTitle} solution without asking for clarification.
-- Avoid unnecessary verbosity; focus on correctness, clarity, and efficiency.`;
+- Avoid unnecessary verbosity; focus on correctness, clarity, and efficiency.
+
+SPOKEN TRANSCRIPTION & ERROR RECOVERY:
+- When the input is a transcribed spoken question, the text may contain speech-recognition errors, phonetic misspellings, or missing words. Infer the most likely intended question from the technical context.
+
+RESPONSE STRUCTURE:
+- For coding questions, respond strictly in this order:
+  1. One-line problem statement
+  2. Approach
+  3. Full solution in ${languageTitle} (clean, complete, runnable code in \`\`\`${fenceTag}\`\`\`, without comments)
+  4. Time and space complexity
+- For behavioral or conceptual questions, give a short, structured, spoken-style answer instead.`;
         break;
       default:
         languageInjection = `\n\n## PROGRAMMING LANGUAGE: ${languageUpper}\nAll code and examples must be in ${languageTitle}. Use code fences with tag: \`\`\`${fenceTag}\`\`\`.`;

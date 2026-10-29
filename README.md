@@ -109,6 +109,8 @@ AZURE_SPEECH_REGION=your_azure_region_here
 |---|---|---|
 | **Screenshot Capture** | `Ctrl + Shift + S` (`Cmd + Shift + S` on macOS) | Capture screen area and send to Gemini |
 | **Toggle Voice Input** | `Alt + R` | Start / stop voice recognition |
+| **Toggle System Listening** | `Alt + L` | Start / stop listening to system audio (interviewer) |
+| **Answer Interviewer** | `Ctrl + Shift + A` (`Cmd + Shift + A` on macOS) | Answer latest interviewer speech on demand |
 | **Toggle Visibility** | `Ctrl + Shift + V` (`Cmd + Shift + V` on macOS) | Show or hide all overlay windows |
 | **Toggle Interaction** | `Ctrl + Shift + I` or `Alt + A` | Toggle click-through transparency mode |
 | **Open Chat** | `Ctrl + Shift + C` (`Cmd + Shift + C` on macOS) | Open the multi-turn chat panel |
@@ -123,6 +125,75 @@ AZURE_SPEECH_REGION=your_azure_region_here
 - **Linux:**
   - **Screen-capture invisibility limitation:** Electron's `setContentProtection` has **no equivalent implementation on Linux** (neither X11 nor Wayland provide an OS-level exclusion flag for window capture). Therefore, on Linux the overlay **will be visible** during full-screen sharing.
   - *Workaround on Linux:* Share a specific application window instead of your entire desktop display, or place the overlay on a separate secondary monitor that is not shared.
+
+---
+
+## Listening to system audio
+
+AI Assistant allows you to capture and transcribe the interviewer's voice coming from meeting applications (Zoom, Google Meet, Microsoft Teams, Discord) through system audio loopback without sending your own microphone audio into their stream or making unnecessary, premature AI queries.
+
+### How It Works
+
+1. **Passive Transcription Buffer (`LISTEN_MODE=manual-answer`):**
+   - When listening is ON, system audio is captured, converted to 16 kHz mono PCM16, and transcribed into a rolling ~60-second buffer.
+   - Transcribed interviewer speech appears live in the Chat window under the **Interviewer** label with distinct styling.
+   - Crucially, in `manual-answer` mode, incoming fragments **do not trigger automatic LLM calls**, so you aren't distracted by half-formed intermediate AI responses while the interviewer is still speaking.
+
+2. **On-Demand Answer:**
+   - Press **Answer** (`Ctrl + Shift + A` / `Cmd + Shift + A` or the Bolt icon on the command bar).
+   - The app extracts all interviewer speech since your last answer, waits up to ~1s if speech is currently in progress mid-sentence, and streams a structured answer in your selected language into both the floating HUD and Chat.
+   - If no new questions were heard, it briefly displays *"No question heard yet"*.
+
+### Per-OS Setup
+
+- **Windows (Native Desktop Audio Loopback):**
+  - Uses Electron's native `desktopCapturer` and `getUserMedia` with `chromeMediaSource: 'desktop'` for system loopback capture.
+  - The video stream is discarded, and audio is downsampled in real-time to 16 kHz mono 16-bit PCM.
+  - **No third-party virtual audio cables or drivers are required.**
+
+- **macOS (BlackHole Virtual Audio Driver):**
+  - macOS CoreAudio does not permit applications to record speaker output directly without an audio loopback device.
+  - Install BlackHole (2-channel) via Homebrew:
+    ```bash
+    brew install blackhole-2ch
+    ```
+  - Open **Audio MIDI Setup** (`Applications > Utilities > Audio MIDI Setup`), click `+` in the lower-left corner, and select **Create Multi-Output Device**.
+  - Check both your primary listening device (e.g., Headphones or MacBook Speakers) and **BlackHole 2ch**. Set your primary listening device as the Master Device with Drift Correction enabled for BlackHole.
+  - In macOS System Settings, select the Multi-Output Device as your output, or in AI Assistant Settings (`Cmd + ,`), select **BlackHole 2ch** in the *Audio device* dropdown.
+
+- **Linux (PulseAudio / PipeWire Monitor):**
+  - Linux systems using PulseAudio or PipeWire expose monitor sources for all active output sinks.
+  - In AI Assistant Settings (`Ctrl + ,`), select the monitor source corresponding to your primary audio output (e.g., `Monitor of Built-in Audio Analog Stereo`).
+
+### Shortcuts & Controls
+
+| Control | Shortcut / Action | Function |
+|---|---|---|
+| **Toggle Listening** | `Alt + L` (or click Headphones icon) | Toggle system loopback capture. Headphones icon pulses red when active. |
+| **Answer Question** | `Ctrl + Shift + A` (`Cmd + Shift + A` on macOS) or click **Answer** | Coalesce interviewer speech and trigger streaming solution |
+| **Clear Memory** | `Ctrl + Shift + \` (`Cmd + Shift + \` on macOS) | Clear rolling transcript buffer and session context |
+
+### Configuration (`.env`)
+
+```ini
+# Audio Source: 'system' (interviewer only), 'mic' (my voice only), or 'both'
+AUDIO_SOURCE=both
+
+# Loopback audio device ID ('default' or specific device ID from settings dropdown)
+AUDIO_DEVICE_ID=default
+
+# Listen mode: 'manual-answer' (buffer & wait for Answer trigger) or 'continuous'
+LISTEN_MODE=manual-answer
+
+# Duration of rolling interviewer transcript buffer in seconds
+INTERVIEWER_BUFFER_SECONDS=60
+```
+
+### Limitations & Best Practices
+
+- **Speaker / Mic Echo:** If using open speakers together with an active microphone, the microphone may pick up speaker audio. Using headphones or headset is strongly recommended when `AUDIO_SOURCE=both`.
+- **System Sound Artifacts:** System audio loopback records all audio routed to your selected output. Close noisy tabs, mute notification chimes, or route meeting audio to the designated device so non-interview sounds are not fed to transcription.
+- **In-flight Guard:** Rapidly clicking the Answer button or pressing the shortcut multiple times is automatically guarded so concurrent duplicate LLM queries are not spawned.
 
 ---
 

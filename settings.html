@@ -98,38 +98,33 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: 12px;
-            padding: 8px;
-            border-radius: 6px;
-            transition: all 0.2s ease;
+            margin-bottom: 16px;
         }
 
         .settings-item:last-child {
             margin-bottom: 0;
         }
 
-        .settings-item:hover {
-            background: rgba(255, 255, 255, 0.05);
-        }
-
         .settings-item-label {
             font-size: 13px;
-            color: rgba(255, 255, 255, 0.9);
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.95);
+            margin-bottom: 4px;
         }
 
         .settings-item-description {
             font-size: 11px;
             color: rgba(255, 255, 255, 0.6);
-            margin-top: 4px;
         }
 
         .btn {
-            background: rgba(255, 255, 255, 0.15);
-            border: none;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.15);
             border-radius: 6px;
             padding: 6px 12px;
             color: rgba(255, 255, 255, 0.9);
             font-size: 12px;
+            font-weight: 500;
             cursor: pointer;
             transition: all 0.2s ease;
             display: flex;
@@ -138,15 +133,9 @@
         }
 
         .btn:hover {
-            background: rgba(255, 255, 255, 0.25);
-        }
-
-        .btn.btn-danger {
-            background: rgba(244, 67, 54, 0.8);
-        }
-
-        .btn.btn-danger:hover {
-            background: rgba(244, 67, 54, 1);
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.25);
+            color: white;
         }
 
         .btn.btn-quit {
@@ -360,6 +349,28 @@
                         <select class="input-field" id="speechProvider">
                             <option value="azure">Azure Speech</option>
                             <option value="whisper">Local Whisper</option>
+                        </select>
+                    </div>
+
+                    <div class="settings-item">
+                        <div>
+                            <div class="settings-item-label">Audio source</div>
+                            <div class="settings-item-description">Choose System audio (interviewer), Microphone, or Both</div>
+                        </div>
+                        <select class="input-field" id="audioSource">
+                            <option value="system">System audio (interviewer)</option>
+                            <option value="mic">Microphone</option>
+                            <option value="both">Both</option>
+                        </select>
+                    </div>
+
+                    <div class="settings-item">
+                        <div>
+                            <div class="settings-item-label">Audio Device</div>
+                            <div class="settings-item-description">Loopback device for interviewer audio (BlackHole on macOS, PulseAudio/PipeWire monitor on Linux, or Desktop loopback on Windows)</div>
+                        </div>
+                        <select class="input-field" id="audioDeviceId">
+                            <option value="default">Default / System Loopback</option>
                         </select>
                     </div>
 

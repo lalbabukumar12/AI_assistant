@@ -428,6 +428,7 @@ class SpeechService extends EventEmitter {
     this.whisperWorker = new WhisperWorkerService();
     this.isProcessingAudio = false;
     this.manualStopRequested = false;
+    this.isSystemAudioRecording = false;
     this._resetVadState();
 
     this.initializeClient();
@@ -684,6 +685,7 @@ class SpeechService extends EventEmitter {
     this.pendingFlush = false;
     this.pendingFinal = false;
     this.manualStopRequested = false;
+    this.isSystemAudioRecording = false;
     this._resetVadState();
     this.emit('recording-started');
     this.emit('status', 'Local Whisper recording started');
@@ -759,7 +761,7 @@ class SpeechService extends EventEmitter {
       clearInterval(this.segmentTimer);
     }
     this.segmentTimer = setInterval(() => {
-      if (!this.isRecording || this.provider !== 'whisper') {
+      if ((!this.isRecording && !this.isSystemAudioRecording) || this.provider !== 'whisper') {
         return;
       }
 
@@ -788,7 +790,7 @@ class SpeechService extends EventEmitter {
    * the current Whisper segment buffer.
    */
   handleAudioChunkFromRenderer(chunk) {
-    if (!this.isRecording || this.provider !== 'whisper' || !this.useRendererCapture) {
+    if ((!this.isRecording && !this.isSystemAudioRecording) || this.provider !== 'whisper' || !this.useRendererCapture) {
       return;
     }
     if (!chunk || !chunk.length) {
@@ -937,6 +939,51 @@ class SpeechService extends EventEmitter {
     this._flushWhisperSegment({ final: false }).catch((error) => {
       logger.error('Whisper segment transcription failed', { error: error.message });
     });
+  }
+
+  startSystemAudio() {
+    this.isSystemAudioRecording = true;
+    this.useRendererCapture = true;
+
+    if (!this.isRecording) {
+      this.segmentBuffers = [];
+      this.segmentBytes = 0;
+      this.transcriptionInFlight = false;
+      this.pendingFlush = false;
+      this.pendingFinal = false;
+      this.manualStopRequested = false;
+      this._resetVadState();
+      this._startSegmentWatchdog();
+
+      if (this.whisperWorker && typeof this.whisperWorker.isConfigured === 'function' && this.whisperWorker.isConfigured()) {
+        this.whisperWorker.warmup({
+          model: this._getWhisperModel(),
+          modelDir: this._getWhisperModelDir(),
+          device: this._getWhisperDevice()
+        }).catch(() => {});
+      }
+    }
+
+    this.emit('system-audio-started');
+    this.emit('status', 'System audio capture started');
+    return this.getStatus();
+  }
+
+  stopSystemAudio() {
+    this.isSystemAudioRecording = false;
+    this.emit('system-audio-stopped');
+    this.emit('status', 'System audio capture stopped');
+
+    if (!this.isRecording) {
+      if (this.segmentBytes > 0) {
+        this._endUtteranceFlush();
+      }
+      if (this.segmentTimer) {
+        clearInterval(this.segmentTimer);
+        this.segmentTimer = null;
+      }
+    }
+    return this.getStatus();
   }
 
   _chunkDurationMs(buffer) {
@@ -1161,6 +1208,7 @@ class SpeechService extends EventEmitter {
     return {
       provider: this.provider,
       isRecording: this.isRecording,
+      isSystemAudioRecording: this.isSystemAudioRecording,
       isProcessingAudio: this.isProcessingAudio,
       isInitialized: this.provider === 'azure' ? !!this.speechConfig : !!this.whisperCommand,
       sessionDuration: this.sessionStartTime ? Date.now() - this.sessionStartTime : 0,

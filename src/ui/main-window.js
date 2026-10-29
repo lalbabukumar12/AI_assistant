@@ -15,6 +15,9 @@ class MainWindowUI {
         this.skillIndicator = null;
         this.micButton = null;
         this.isRecording = false;
+
+        this.answerButton = null;
+        this.listenButton = null;
         this.speechAvailable = false; // track availability
         this._popoverHideTimeout = null;
         // Renderer-side audio capture state (used for Whisper on Windows)
@@ -22,6 +25,11 @@ class MainWindowUI {
         this._mediaStream = null;
         this._scriptNode = null;
         this._captureInterval = null;
+        // Renderer-side system loopback audio capture state (separate from microphone)
+        this._systemAudioContext = null;
+        this._systemMediaStream = null;
+        this._systemScriptNode = null;
+        this.isSystemAudioRecording = false;
         
         // Define available skills for navigation
         this.availableSkills = [
@@ -142,6 +150,8 @@ class MainWindowUI {
         this.updateSkillIndicatorState();
         this.updateMicButtonState();
         this.updateSettingsIndicatorState();
+        this.updateAnswerButtonState();
+        this.updateListenButtonState();
     }
 
     updateStatusDot() {
@@ -238,6 +248,35 @@ class MainWindowUI {
         }
     }
 
+    updateAnswerButtonState() {
+        if (this.answerButton) {
+            this.answerButton.classList.remove('interactive', 'non-interactive');
+            if (this.isInteractive) {
+                this.answerButton.classList.add('interactive');
+            } else {
+                this.answerButton.classList.add('non-interactive');
+            }
+            this.answerButton.disabled = !this.isInteractive;
+        }
+    }
+
+    updateListenButtonState() {
+        if (this.listenButton) {
+            this.listenButton.classList.remove('interactive', 'non-interactive');
+            if (this.isInteractive) {
+                this.listenButton.classList.add('interactive');
+            } else {
+                this.listenButton.classList.add('non-interactive');
+            }
+            this.listenButton.disabled = !this.isInteractive;
+            if (this.isSystemAudioRecording) {
+                this.listenButton.classList.add('recording');
+            } else {
+                this.listenButton.classList.remove('recording');
+            }
+        }
+    }
+
     resizeWindowToContent() {
         // Wait for DOM to fully render
         setTimeout(() => {
@@ -270,6 +309,8 @@ class MainWindowUI {
         this.skillIndicator = document.getElementById('skillIndicator');
         this.settingsIndicator = document.getElementById('settingsIndicator'); // Optional
         this.micButton = document.getElementById('micButton');
+        this.answerButton = document.getElementById('answerButton');
+        this.listenButton = document.getElementById('listenButton');
     this.infoButton = document.getElementById('infoButton');
     this.shortcutsPopover = document.getElementById('shortcutsPopover');
 
@@ -325,6 +366,7 @@ class MainWindowUI {
                         error: error.message
                     });
                     this.isRecording = false;
+
                     this.updateMicButtonState();
                 }
             } else if (this.isInteractive && !this.speechAvailable) {
@@ -334,6 +376,53 @@ class MainWindowUI {
                 this.loadSpeechAvailability();
             }
         });
+
+        // Add click handler for Answer button
+        if (this.answerButton) {
+            this.answerButton.addEventListener('click', async () => {
+                if (!this.isInteractive) return;
+                try {
+                    logger.info('Answer button clicked', { component: 'MainWindowUI' });
+                    if (window.electronAPI && window.electronAPI.triggerAnswer) {
+                        await window.electronAPI.triggerAnswer();
+                    }
+                } catch (error) {
+                    logger.error('Failed to trigger answer from Answer button', {
+                        component: 'MainWindowUI',
+                        error: error.message
+                    });
+                }
+            });
+        }
+
+        // Add click handler for Listen button
+        if (this.listenButton) {
+            this.listenButton.addEventListener('click', async () => {
+                if (!this.isInteractive) return;
+                try {
+                    logger.info('Listen button clicked', {
+                        component: 'MainWindowUI',
+                        isListening: this.isSystemAudioRecording
+                    });
+                    if (window.electronAPI && window.electronAPI.toggleListening) {
+                        await window.electronAPI.toggleListening();
+                    } else if (this.isSystemAudioRecording) {
+                        if (window.electronAPI && window.electronAPI.stopSystemAudio) {
+                            await window.electronAPI.stopSystemAudio();
+                        }
+                    } else {
+                        if (window.electronAPI && window.electronAPI.startSystemAudio) {
+                            await window.electronAPI.startSystemAudio();
+                        }
+                    }
+                } catch (error) {
+                    logger.error('Failed to toggle listening from button', {
+                        component: 'MainWindowUI',
+                        error: error.message
+                    });
+                }
+            });
+        }
 
         // Language dropdown
         this.languageSelect = document.getElementById('codingLanguage');
@@ -428,6 +517,20 @@ class MainWindowUI {
             window.electronAPI.onRecordingStarted(() => {
                 this.handleRecordingStarted();
             });
+
+            if (window.electronAPI.onSystemAudioStarted) {
+                window.electronAPI.onSystemAudioStarted((event, options) => {
+                    if (this.listenButton) this.listenButton.classList.add('recording');
+                    this._startSystemAudioCapture(options);
+                });
+            }
+
+            if (window.electronAPI.onSystemAudioStopped) {
+                window.electronAPI.onSystemAudioStopped(() => {
+                    if (this.listenButton) this.listenButton.classList.remove('recording');
+                    this._stopSystemAudioCapture();
+                });
+            }
 
             window.electronAPI.onRecordingStopped(() => {
                 this.handleRecordingStopped();
@@ -574,6 +677,28 @@ class MainWindowUI {
                 }
             }
             
+            // Ctrl/Cmd+Shift+A for Answer
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'a' || e.key === 'A')) {
+                e.preventDefault();
+                if (!this.isInteractive) return;
+                if (window.electronAPI && window.electronAPI.triggerAnswer) {
+                    window.electronAPI.triggerAnswer();
+                }
+            }
+
+            // Alt+L for Toggle Listening
+            if (e.altKey && (e.key === 'l' || e.key === 'L')) {
+                e.preventDefault();
+                if (!this.isInteractive) return;
+                if (window.electronAPI && window.electronAPI.toggleListening) {
+                    window.electronAPI.toggleListening();
+                } else if (this.isSystemAudioRecording) {
+                    window.electronAPI?.stopSystemAudio();
+                } else {
+                    window.electronAPI?.startSystemAudio();
+                }
+            }
+
             // Alt+A is handled globally by the main process
             // No need to handle it here since it needs to work even when windows are non-interactive
         });
@@ -641,7 +766,23 @@ class MainWindowUI {
         logger.debug('Screenshot request received', { component: 'MainWindowUI' });
     }
 
-    handleRecordingStarted() {
+    async handleRecordingStarted() {
+        this.isRecording = true;
+        if (this.micButton) {
+            this.micButton.classList.add('recording');
+        }
+
+        let audioSource = 'both';
+        let audioDeviceId = 'default';
+        if (window.electronAPI && window.electronAPI.getSettings) {
+            try {
+                const settings = await window.electronAPI.getSettings();
+                if (settings) {
+                    if (settings.audioSource) audioSource = settings.audioSource;
+                    if (settings.audioDeviceId) audioDeviceId = settings.audioDeviceId;
+                }
+            } catch (e) {}
+        }
         this.isRecording = true;
         if (this.micButton) {
             this.micButton.classList.add('recording');
@@ -657,17 +798,26 @@ class MainWindowUI {
             navigator.platform || '')).toLowerCase();
         const useRendererCapture = platform.includes('win') || platform.includes('mac');
         if (useRendererCapture) {
-            this._startRendererAudioCapture();
+            if (audioSource === 'mic' || audioSource === 'both') {
+                this._startRendererAudioCapture();
+            }
+        }
+        if (audioSource === 'system' || audioSource === 'both') {
+            this._startSystemAudioCapture({ deviceId: audioDeviceId });
+        }
+        if (false) {
         }
         logger.debug('Recording started', { component: 'MainWindowUI' });
     }
 
     handleRecordingStopped() {
         this.isRecording = false;
+
         if (this.micButton) {
             this.micButton.classList.remove('recording');
         }
         this._stopRendererAudioCapture();
+        this._stopSystemAudioCapture();
         logger.debug('Recording stopped', { component: 'MainWindowUI' });
     }
 
@@ -678,9 +828,10 @@ class MainWindowUI {
      */
     async _startRendererAudioCapture() {
         try {
-            this._stopRendererAudioCapture();
+            this._stopRendererAudioCapture(); /*
+        this._stopSystemAudioCapture();
 
-            const stream = await navigator.mediaDevices.getUserMedia({
+            */ const stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     echoCancellation: true,
                     noiseSuppression: true,
@@ -748,11 +899,241 @@ class MainWindowUI {
                 clearInterval(this._captureInterval);
                 this._captureInterval = null;
             }
+            if (true) {
+                if (true) {
+
+
+            }
+
+
+
+        // Renderer-side system loopback audio capture state (separate from microphone)
+        this._systemAudioContext = null;
+        this._systemMediaStream = null;
+        this._systemScriptNode = null;
+        this.isSystemAudioRecording = false;
+            }
         } catch (error) {
             logger.error('Error stopping renderer audio capture', {
                 component: 'MainWindowUI',
                 error: error.message
             });
+        }
+    }
+
+    /**
+     * Start capturing system audio (interviewer loopback).
+     * - Windows: uses desktopCapturer + getUserMedia with chromeMediaSource 'desktop',
+     *   dropping video tracks immediately.
+     * - macOS: detects or uses virtual audio device (BlackHole, Soundflower, Loopback).
+     * - Linux: detects or uses PulseAudio / PipeWire monitor source.
+     * Audio is resampled/converted to 16 kHz mono PCM16 and sent via 'audio-chunk' IPC.
+     */
+    async _startSystemAudioCapture(options = {}) {
+        try {
+            this._stopSystemAudioCapture();
+
+            const platform = (typeof navigator !== 'undefined' &&
+              ((navigator.userAgentData && navigator.userAgentData.platform) ||
+                navigator.platform || '')).toLowerCase();
+            const isWindows = platform.includes('win');
+            const isMac = platform.includes('mac');
+            const isLinux = platform.includes('linux');
+
+            let stream = null;
+
+            if (isWindows && (!options || !options.deviceId || options.deviceId === 'default')) {
+                let sourceId = options && options.sourceId;
+                if (!sourceId && window.electronAPI && window.electronAPI.getAudioDevices) {
+                    try {
+                        const devInfo = await window.electronAPI.getAudioDevices();
+                        if (devInfo && devInfo.desktopSources && devInfo.desktopSources.length > 0) {
+                            sourceId = devInfo.desktopSources[0].id;
+                        }
+                    } catch (e) {
+                        logger.warn('Failed to retrieve desktop sources on Windows', { error: e.message });
+                    }
+                }
+
+                const constraints = {
+                    audio: {
+                        mandatory: {
+                            chromeMediaSource: 'desktop'
+                        }
+                    },
+                    video: {
+                        mandatory: {
+                            chromeMediaSource: 'desktop',
+                            ...(sourceId ? { chromeMediaSourceId: sourceId } : {})
+                        }
+                    }
+                };
+
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia(constraints);
+                } catch (err) {
+                    logger.warn('desktopCapturer loopback getUserMedia failed', { error: err.message });
+                }
+
+                if (stream) {
+                    // Drop video tracks immediately
+                    stream.getVideoTracks().forEach((t) => t.stop());
+                }
+            }
+
+            if (!stream) {
+                let targetDeviceId = options && options.deviceId && options.deviceId !== 'default' ? options.deviceId : null;
+
+                if (!targetDeviceId && (isMac || isLinux)) {
+                    try {
+                        const devices = await navigator.mediaDevices.enumerateDevices();
+                        const audioInputs = devices.filter((d) => d.kind === 'audioinput');
+                        if (isMac) {
+                            const vDev = audioInputs.find((d) =>
+                                /blackhole|soundflower|loopback/i.test(d.label)
+                            );
+                            if (vDev) targetDeviceId = vDev.deviceId;
+                        } else if (isLinux) {
+                            const monDev = audioInputs.find((d) =>
+                                /monitor/i.test(d.label)
+                            );
+                            if (monDev) targetDeviceId = monDev.deviceId;
+                        }
+                    } catch (e) {
+                        logger.warn('Device enumeration failed', { error: e.message });
+                    }
+                }
+
+                const audioConstraints = {
+                    echoCancellation: false,
+                    noiseSuppression: false,
+                    autoGainControl: false,
+                    sampleRate: { ideal: 16000 }
+                };
+                if (targetDeviceId) {
+                    audioConstraints.deviceId = { exact: targetDeviceId };
+                }
+
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+                } catch (err) {
+                    logger.warn('Audio input getUserMedia failed', { error: err.message });
+                }
+            }
+
+            if (!stream || stream.getAudioTracks().length === 0) {
+                const reason = isMac
+                    ? 'Loopback audio device not found. Please install BlackHole (brew install blackhole-2ch) and select it in Settings.'
+                    : isLinux
+                    ? 'PulseAudio/PipeWire monitor source not found. Please select a monitor source in Settings.'
+                    : 'System audio loopback track unavailable on this machine.';
+                logger.warn(reason);
+                if (window.electronAPI && window.electronAPI.stopSystemAudio) {
+                    await window.electronAPI.stopSystemAudio();
+                }
+                return;
+            }
+
+            this._systemMediaStream = stream;
+
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            const audioContext = new AudioCtx({ sampleRate: 16000 });
+            this._systemAudioContext = audioContext;
+
+            const source = audioContext.createMediaStreamSource(stream);
+            const bufferSize = 4096;
+            const scriptNode = audioContext.createScriptProcessor(bufferSize, 1, 1);
+            this._systemScriptNode = scriptNode;
+
+            const inputSampleRate = audioContext.sampleRate || 16000;
+
+            scriptNode.onaudioprocess = (event) => {
+                if (!this.isSystemAudioRecording || !window.electronAPI || !window.electronAPI.sendAudioChunk) {
+                    return;
+                }
+                const inputData = event.inputBuffer.getChannelData(0);
+
+                // Mute output buffer to prevent loopback speaker feedback
+                const outputBuffer = event.outputBuffer;
+                for (let c = 0; c < outputBuffer.numberOfChannels; c++) {
+                    outputBuffer.getChannelData(c).fill(0);
+                }
+
+                // Convert to 16 kHz mono PCM16
+                let pcm16;
+                if (inputSampleRate === 16000) {
+                    pcm16 = new Int16Array(inputData.length);
+                    for (let i = 0; i < inputData.length; i++) {
+                        const s = Math.max(-1, Math.min(1, inputData[i]));
+                        pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                    }
+                } else {
+                    const ratio = inputSampleRate / 16000;
+                    const outLen = Math.round(inputData.length / ratio);
+                    pcm16 = new Int16Array(outLen);
+                    for (let i = 0; i < outLen; i++) {
+                        const srcIdx = i * ratio;
+                        const i0 = Math.floor(srcIdx);
+                        const i1 = Math.min(i0 + 1, inputData.length - 1);
+                        const weight = srcIdx - i0;
+                        const sample = inputData[i0] * (1 - weight) + inputData[i1] * weight;
+                        const s = Math.max(-1, Math.min(1, sample));
+                        pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                    }
+                }
+
+                window.electronAPI.sendAudioChunk(pcm16.buffer);
+            };
+
+            source.connect(scriptNode);
+            scriptNode.connect(audioContext.destination);
+
+            this.isSystemAudioRecording = true;
+            if (this.listenButton) {
+                this.listenButton.classList.add('recording');
+            }
+            logger.info('System loopback audio capture active', {
+                component: 'MainWindowUI',
+                sampleRate: inputSampleRate,
+                trackLabel: stream.getAudioTracks()[0]?.label
+            });
+        } catch (error) {
+            logger.error('Failed to start system audio capture in renderer', {
+                component: 'MainWindowUI',
+                error: error.message
+            });
+            this.isSystemAudioRecording = false;
+            this._stopSystemAudioCapture();
+            try {
+                if (window.electronAPI && window.electronAPI.stopSystemAudio) {
+                    await window.electronAPI.stopSystemAudio();
+                }
+            } catch (_) {}
+        }
+    }
+
+    _stopSystemAudioCapture() {
+        if (this.listenButton) {
+            this.listenButton.classList.remove('recording');
+        }
+        this.isSystemAudioRecording = false;
+        try {
+            if (this._systemScriptNode) {
+                this._systemScriptNode.disconnect();
+                this._systemScriptNode.onaudioprocess = null;
+                this._systemScriptNode = null;
+            }
+            if (this._systemMediaStream) {
+                this._systemMediaStream.getTracks().forEach((track) => track.stop());
+                this._systemMediaStream = null;
+            }
+            if (this._systemAudioContext) {
+                this._systemAudioContext.close().catch(() => {});
+                this._systemAudioContext = null;
+            }
+            logger.debug('System audio capture stopped and cleaned up', { component: 'MainWindowUI' });
+        } catch (e) {
+            logger.warn('Error during system audio capture cleanup', { error: e.message });
         }
     }
 

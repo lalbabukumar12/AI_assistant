@@ -16,7 +16,7 @@ function resolveEnvPath() {
     const projectEnv = path.join(process.cwd(), ".env");
     // Prefer a project .env only when it already exists and userData has none
     // (i.e. a developer running from the repo). Otherwise use userData.
-    if (!fs.existsSync(userDataEnv) && fs.existsSync(projectEnv)) {
+    if ((!app.isPackaged || !fs.existsSync(userDataEnv)) && fs.existsSync(projectEnv)) {
       return projectEnv;
     }
     return userDataEnv;
@@ -125,6 +125,15 @@ class ApplicationController {
     this._utteranceTimer = null;
     this._utteranceDispatchInFlight = false;
     this._utteranceCoalesceMs = 800;
+
+    // Rolling buffer of the last ~60 seconds of finalized interviewer utterances (configurable)
+    this.interviewerBufferDurationMs = Number(process.env.INTERVIEWER_BUFFER_MS) ||
+      (Number(process.env.INTERVIEWER_BUFFER_SECONDS) ? Number(process.env.INTERVIEWER_BUFFER_SECONDS) * 1000 : 60000);
+    this.interviewerBuffer = [];
+    this.listenMode = process.env.LISTEN_MODE || "manual-answer";
+    this._lastAnswerTimestamp = 0;
+    this._manualAnswerInFlight = false;
+    this._latestInterimUtterance = { text: '', timestamp: 0 };
 
     // First-run onboarding: detects missing .env / API key and triggers
     // a settings-window prompt on first launch so users don't have to
@@ -360,7 +369,7 @@ class ApplicationController {
           return false;
         }
         if (permission === "media") {
-          return !details.mediaType || details.mediaType === "audio";
+          return !details.mediaType || details.mediaType === "audio" || details.mediaType === "video";
         }
         return permission === "display-capture";
       }
@@ -372,7 +381,7 @@ class ApplicationController {
         if (isTrustedAppContents(webContents)) {
           if (permission === "media") {
             const mediaTypes = Array.isArray(details.mediaTypes) ? details.mediaTypes : [];
-            granted = mediaTypes.length === 0 || mediaTypes.includes("audio");
+            granted = mediaTypes.length === 0 || mediaTypes.includes("audio") || mediaTypes.includes("video");
           } else {
             granted = permission === "display-capture";
           }
@@ -398,6 +407,8 @@ class ApplicationController {
       "CommandOrControl+,": () => windowManager.showSettings(),
       "Alt+A": () => windowManager.toggleInteraction(),
       "Alt+R": () => this.toggleSpeechRecognition(),
+      "Alt+L": () => this.toggleListening(),
+      "CommandOrControl+Shift+A": () => this.triggerAnswer(),
       "CommandOrControl+Shift+T": () => windowManager.forceAlwaysOnTopForAllWindows(),
       "CommandOrControl+Shift+Alt+T": () => {
         const results = windowManager.testAlwaysOnTopForAllWindows();
@@ -426,10 +437,15 @@ class ApplicationController {
     });
 
     speechService.on("transcription", (text) => {
+      this._latestInterimUtterance = { text: '', timestamp: 0 };
       this.handleTranscriptionFragment(text);
     });
 
     speechService.on("interim-transcription", (text) => {
+      this._latestInterimUtterance = {
+        text: String(text || '').trim(),
+        timestamp: Date.now()
+      };
       BrowserWindow.getAllWindows().forEach((window) => {
         window.webContents.send("interim-transcription", { text });
       });
@@ -479,6 +495,105 @@ class ApplicationController {
     ipcMain.handle("start-speech-recognition", () => {
       speechService.startRecording();
       return speechService.getStatus();
+    });
+
+    ipcMain.handle("start-system-audio", async (_event, options = {}) => {
+      try {
+        logger.info("Starting system audio capture requested", { options });
+        speechService.startSystemAudio();
+
+        let sourceId = options && options.sourceId;
+        if (process.platform === "win32" && !sourceId && (!options || !options.deviceId || options.deviceId === "default")) {
+          try {
+            const { desktopCapturer } = require("electron");
+            const sources = await desktopCapturer.getSources({ types: ["screen"] });
+            if (sources && sources.length > 0) {
+              sourceId = sources[0].id;
+            }
+          } catch (err) {
+            logger.warn("Could not get desktop screen source for system audio", { error: err.message });
+          }
+        }
+
+        const payload = {
+          audioSource: (options && options.audioSource) || process.env.AUDIO_SOURCE || "both",
+          deviceId: (options && options.deviceId) || process.env.AUDIO_DEVICE_ID || process.env.SYSTEM_AUDIO_DEVICE || "default",
+          ...(options || {}),
+          sourceId,
+          platform: process.platform,
+        };
+
+        windowManager.broadcastToAllWindows("system-audio-started", payload);
+        return { success: true, status: "System audio capture started", ...payload };
+      } catch (error) {
+        logger.error("Failed to start system audio capture", { error: error.message });
+        const errMsg = `System audio unavailable: ${error.message}`;
+        windowManager.broadcastToAllWindows("speech-status", { status: errMsg, available: false });
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle("stop-system-audio", async () => {
+      try {
+        logger.info("Stopping system audio capture requested");
+        speechService.stopSystemAudio();
+        windowManager.broadcastToAllWindows("system-audio-stopped");
+        return { success: true, status: "System audio capture stopped" };
+      } catch (error) {
+        logger.error("Failed to stop system audio capture", { error: error.message });
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle("get-audio-devices", async (event) => {
+      try {
+        let desktopSources = [];
+        try {
+          const { desktopCapturer } = require("electron");
+          const sources = await desktopCapturer.getSources({ types: ["screen"] });
+          desktopSources = sources.map((s) => ({
+            id: s.id,
+            name: s.name,
+            display_id: s.display_id,
+          }));
+        } catch (e) {
+          logger.warn("Could not retrieve desktop sources", { error: e.message });
+        }
+
+        let devices = [];
+        if (event && event.sender && !event.sender.isDestroyed()) {
+          try {
+            devices = await event.sender.executeJavaScript(`
+              navigator.mediaDevices.enumerateDevices().then(devs =>
+                devs.filter(d => d.kind === 'audioinput').map(d => ({
+                  deviceId: d.deviceId,
+                  label: d.label,
+                  kind: d.kind,
+                  groupId: d.groupId
+                }))
+              ).catch(() => [])
+            `);
+          } catch (e) {
+            logger.warn("Could not enumerate audio devices via sender", { error: e.message });
+          }
+        }
+
+        return {
+          success: true,
+          devices: devices || [],
+          desktopSources: desktopSources || [],
+          platform: process.platform,
+        };
+      } catch (error) {
+        logger.error("Failed to get audio devices", { error: error.message });
+        return {
+          success: false,
+          error: error.message,
+          devices: [],
+          desktopSources: [],
+          platform: process.platform,
+        };
+      }
     });
 
     ipcMain.handle("stop-speech-recognition", () => {
@@ -566,7 +681,7 @@ class ApplicationController {
       if (mainWindow) {
         // Enforce horizontal constraints: min ~one icon, max original width
         const minW = 60;
-        const maxW = windowManager.windowConfigs?.main?.width || 520;
+        const maxW = windowManager.windowConfigs?.main?.width || 600;
         const clampedWidth = Math.max(minW, Math.min(maxW, Math.round(width || minW)));
         try {
           // Match content size to the DOM so no extra transparent area remains
@@ -602,10 +717,29 @@ class ApplicationController {
     });
 
     ipcMain.handle("clear-session-memory", () => {
+      this.clearInterviewerBuffer();
+      this._lastAnswerTimestamp = 0;
       sessionManager.clear();
       windowManager.broadcastToAllWindows("session-cleared");
       return { success: true };
     });
+
+    ipcMain.handle("get-interviewer-buffer", () => {
+      return {
+        transcript: this.getInterviewerTranscript(),
+        buffer: this.getInterviewerBuffer(),
+        durationSeconds: Math.round(this.getInterviewerBufferDurationMs() / 1000),
+        listenMode: process.env.LISTEN_MODE || this.listenMode || "manual-answer",
+      };
+    });
+
+    ipcMain.handle("clear-interviewer-buffer", () => {
+      this.clearInterviewerBuffer();
+      return { success: true };
+    });
+
+    ipcMain.handle("trigger-answer", () => this.triggerAnswer());
+    ipcMain.handle("toggle-listening", () => this.toggleListening());
 
     ipcMain.handle("force-always-on-top", () => {
       windowManager.forceAlwaysOnTopForAllWindows();
@@ -973,7 +1107,122 @@ class ApplicationController {
     }
   }
 
+  toggleListening() {
+    try {
+      const isListening = !!speechService.isSystemAudioRecording;
+      if (isListening) {
+        speechService.stopSystemAudio();
+        windowManager.broadcastToAllWindows("system-audio-stopped");
+        logger.info("System audio listening stopped via toggle");
+        return { success: true, isListening: false };
+      } else {
+        speechService.startSystemAudio();
+        const payload = {
+          audioSource: process.env.AUDIO_SOURCE || "both",
+          deviceId: process.env.AUDIO_DEVICE_ID || process.env.SYSTEM_AUDIO_DEVICE || "default",
+          platform: process.platform,
+        };
+        windowManager.broadcastToAllWindows("system-audio-started", payload);
+        logger.info("System audio listening started via toggle");
+        return { success: true, isListening: true };
+      }
+    } catch (error) {
+      logger.error("Error toggling system audio listening:", { error: error.message });
+      return { success: false, error: error.message };
+    }
+  }
+
+  async triggerAnswer() {
+    if (this._manualAnswerInFlight) {
+      logger.warn("triggerAnswer ignored: request already in flight");
+      return { success: false, inFlight: true };
+    }
+    this._manualAnswerInFlight = true;
+
+    try {
+      // 1. If the last utterance is partial, wait up to ~1s for it to finalize
+      const hasRecentInterim = Boolean(
+        this._latestInterimUtterance &&
+        this._latestInterimUtterance.text &&
+        (Date.now() - this._latestInterimUtterance.timestamp < 1500)
+      );
+      const isSpeechActive = Boolean(
+        speechService && (speechService.vadSpeaking || speechService.transcriptionInFlight)
+      );
+
+      if (hasRecentInterim || isSpeechActive) {
+        logger.info("Partial interviewer utterance detected; waiting up to ~1s for finalization...");
+        await new Promise((resolve) => {
+          let resolved = false;
+          const timer = setTimeout(() => {
+            if (!resolved) {
+              resolved = true;
+              speechService.removeListener("transcription", onTranscription);
+              resolve();
+            }
+          }, 1000);
+
+          const onTranscription = () => {
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(timer);
+              resolve();
+            }
+          };
+          speechService.once("transcription", onTranscription);
+        });
+      }
+
+      // 2. Extract interviewer utterances since the last answer
+      this.pruneInterviewerBuffer();
+      const lastAnswerTs = this._lastAnswerTimestamp || 0;
+      const newUtterances = (this.interviewerBuffer || []).filter(
+        (entry) => entry && typeof entry.timestamp === "number" && entry.timestamp > lastAnswerTs
+      );
+      const questionText = newUtterances
+        .map((entry) => (entry.text || "").trim())
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+
+      // 3. If the buffer is empty, show "No question heard yet"
+      if (!questionText) {
+        logger.info("triggerAnswer: no question heard yet since last answer");
+        windowManager.broadcastToAllWindows("speech-status", {
+          status: "No question heard yet",
+          available: this.speechAvailable,
+        });
+        return { success: false, error: "No question heard yet" };
+      }
+
+      // Advance marker so subsequent triggers answer only subsequent utterances
+      this._lastAnswerTimestamp = Date.now();
+
+      logger.info("triggerAnswer: answering interviewer question", {
+        questionLength: questionText.length,
+        questionPreview: questionText.substring(0, 100) + (questionText.length > 100 ? "..." : ""),
+        utteranceCount: newUtterances.length,
+      });
+
+      // 4. Stream the result to llmResponse window and chat window
+      const sessionHistory = sessionManager.getOptimizedHistory();
+      await this.processTranscriptionWithLLM(questionText, sessionHistory);
+      return { success: true };
+    } catch (error) {
+      logger.error("triggerAnswer failed", { error: error.message });
+      return { success: false, error: error.message };
+    } finally {
+      this._manualAnswerInFlight = false;
+    }
+  }
+
+  triggerManualAnswer() {
+    return this.triggerAnswer();
+  }
+
   clearSessionMemory() {
+    this.clearInterviewerBuffer();
+    this._lastAnswerTimestamp = 0;
     try {
       sessionManager.clear();
       windowManager.broadcastToAllWindows("session-cleared");
@@ -1222,11 +1471,55 @@ class ApplicationController {
   }
 
   /**
-   * Buffer a transcribed fragment and (re)arm the coalesce debounce. Fragments
+   * Rolling interviewer buffer helpers (~60s window) and fragment dispatcher.
    * are shown in the UI immediately so speech feels live, but the LLM is only
-   * asked once the speaker has actually paused — this is what stops one spoken
-   * line from producing two separate, slow answers.
+   * In manual-answer mode, fragments are buffered and displayed without calling the LLM.
+   * In continuous mode, fragments debounce and trigger LLM generation automatically.
    */
+  getInterviewerBufferDurationMs() {
+    const msFromEnv = Number(process.env.INTERVIEWER_BUFFER_MS);
+    if (Number.isFinite(msFromEnv) && msFromEnv > 0) return msFromEnv;
+    const secFromEnv = Number(process.env.INTERVIEWER_BUFFER_SECONDS);
+    if (Number.isFinite(secFromEnv) && secFromEnv > 0) return secFromEnv * 1000;
+    return this.interviewerBufferDurationMs || 60000;
+  }
+
+  pruneInterviewerBuffer() {
+    const duration = this.getInterviewerBufferDurationMs();
+    const cutoff = Date.now() - duration;
+    this.interviewerBuffer = (this.interviewerBuffer || []).filter(
+      (item) => item && typeof item.timestamp === "number" && item.timestamp >= cutoff
+    );
+  }
+
+  addInterviewerUtterance(text) {
+    const fragment = (text || "").trim();
+    if (!fragment) return;
+    if (!Array.isArray(this.interviewerBuffer)) {
+      this.interviewerBuffer = [];
+    }
+    this.interviewerBuffer.push({
+      text: fragment,
+      timestamp: Date.now(),
+    });
+    this.pruneInterviewerBuffer();
+  }
+
+  getInterviewerTranscript() {
+    this.pruneInterviewerBuffer();
+    return (this.interviewerBuffer || []).map((e) => e.text).join(" ").trim();
+  }
+
+  getInterviewerBuffer() {
+    this.pruneInterviewerBuffer();
+    return [...(this.interviewerBuffer || [])];
+  }
+
+  clearInterviewerBuffer() {
+    this.interviewerBuffer = [];
+    logger.debug("Interviewer utterance buffer cleared");
+  }
+
   handleTranscriptionFragment(text) {
     const fragment = (text || "").trim();
     if (!fragment) {
@@ -1235,7 +1528,28 @@ class ApplicationController {
 
     // Route speech UI events according to the user's response-target setting.
     sessionManager.addUserInput(fragment, 'speech');
-    this.sendToVoiceResponseWindows("transcription-received", { text: fragment });
+    // Always buffer finalized interviewer utterances into rolling ~60s window
+    this.addInterviewerUtterance(fragment);
+
+    const payload = {
+      text: fragment,
+      role: 'interviewer',
+      source: 'interviewer',
+      isInterviewer: true,
+      timestamp: Date.now()
+    };
+    this.sendToVoiceResponseWindows("transcription-received", payload);
+    windowManager.broadcastToAllWindows("interviewer-transcription", payload);
+
+    // In LISTEN_MODE='manual-answer', only buffer and display the text; do NOT call the LLM.
+    const currentListenMode = process.env.LISTEN_MODE || this.listenMode || 'manual-answer';
+    if (currentListenMode === 'manual-answer') {
+      logger.info("Transcription buffered in manual-answer mode; skipping LLM call", {
+        preview: fragment.substring(0, 80),
+        bufferCount: this.interviewerBuffer.length
+      });
+      return;
+    }
 
     this._utteranceBuffer = this._utteranceBuffer
       ? `${this._utteranceBuffer} ${fragment}`
@@ -1607,6 +1921,11 @@ class ApplicationController {
       whisperResponseTarget: process.env.WHISPER_RESPONSE_TARGET || "both",
       whisperSegmentMs: process.env.WHISPER_SEGMENT_MS || "4000",
       geminiKey: process.env.GEMINI_API_KEY || "",
+      audioSource: process.env.AUDIO_SOURCE || "both",
+      audioDeviceId: process.env.AUDIO_DEVICE_ID || process.env.SYSTEM_AUDIO_DEVICE || "default",
+      systemAudioDevice: process.env.AUDIO_DEVICE_ID || process.env.SYSTEM_AUDIO_DEVICE || "default",
+      listenMode: process.env.LISTEN_MODE || this.listenMode || "manual-answer",
+      interviewerBufferSeconds: Math.round(this.getInterviewerBufferDurationMs() / 1000) || 60,
 
       azureConfigured: !!process.env.AZURE_SPEECH_KEY && !!process.env.AZURE_SPEECH_REGION,
       speechAvailable: this.speechAvailable
@@ -1677,6 +1996,30 @@ class ApplicationController {
       }
       if (settings.geminiKey !== undefined) {
         envUpdates.GEMINI_API_KEY = settings.geminiKey;
+      }
+      if (settings.audioSource !== undefined) {
+        envUpdates.AUDIO_SOURCE = settings.audioSource;
+      }
+      if (settings.audioDeviceId !== undefined) {
+        envUpdates.AUDIO_DEVICE_ID = settings.audioDeviceId;
+        envUpdates.SYSTEM_AUDIO_DEVICE = settings.audioDeviceId;
+      }
+      if (settings.listenMode !== undefined) {
+        envUpdates.LISTEN_MODE = settings.listenMode;
+        this.listenMode = settings.listenMode;
+      }
+      if (settings.interviewerBufferSeconds !== undefined) {
+        const secs = Number(settings.interviewerBufferSeconds);
+        if (Number.isFinite(secs) && secs > 0) {
+          envUpdates.INTERVIEWER_BUFFER_SECONDS = String(secs);
+          this.interviewerBufferDurationMs = secs * 1000;
+        }
+      } if (false) {
+        // envUpdates.AUDIO_DEVICE_ID = settings.systemAudioDevice;
+      //
+      //
+      //
+      //
       }
 
       // Capture the previous whisper command BEFORE persisting — persistEnvUpdates
